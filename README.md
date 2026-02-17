@@ -98,7 +98,8 @@ Launch `llama-server` across all 5 GPUs, bound to `0.0.0.0:8080` so it is extern
     --ctx-size 8192 \
     --flash-attn on \
     --split-mode layer \
-    --tensor-split 1,1,1,1,1
+    --tensor-split 1,1,1,1,1 \
+    --api-key 07bbc8c925648141d45ad9c363febf6cedc059744b5831e1
 ```
 
 ### Flag reference
@@ -113,6 +114,7 @@ Launch `llama-server` across all 5 GPUs, bound to `0.0.0.0:8080` so it is extern
 | `--flash-attn on` | Enable flash attention (requires explicit `on`/`off`/`auto` value) |
 | `--split-mode layer` | Split model layers across GPUs |
 | `--tensor-split 1,1,1,1,1` | Distribute evenly across all 5 GPUs |
+| `--api-key KEY` | Require Bearer token auth on inference endpoints (public: `/health`, `/v1/models`) |
 
 ### Important notes
 
@@ -125,13 +127,14 @@ Launch `llama-server` across all 5 GPUs, bound to `0.0.0.0:8080` so it is extern
 Once the server logs `server is listening on http://0.0.0.0:8080`, test it:
 
 ```bash
-# Health check
+# Health check (no auth required)
 curl http://localhost:8080/health
 # Expected: {"status":"ok"}
 
-# Chat completion (OpenAI-compatible)
+# Chat completion (requires API key)
 curl http://localhost:8080/v1/chat/completions \
     -H "Content-Type: application/json" \
+    -H "Authorization: Bearer 07bbc8c925648141d45ad9c363febf6cedc059744b5831e1" \
     -d '{
         "model": "glm-5",
         "messages": [
@@ -140,6 +143,8 @@ curl http://localhost:8080/v1/chat/completions \
         "max_tokens": 1024
     }'
 ```
+
+Requests without a valid API key receive `401 Invalid API Key`. The `/health` and `/v1/models` endpoints are public (no auth).
 
 Note: Use a higher `max_tokens` (e.g., 1024+) because the model's internal reasoning/thinking phase consumes tokens before producing visible output in the `content` field.
 
@@ -173,6 +178,7 @@ Ensure port 8080 is listed in your pod's "Expose HTTP Ports" configuration in th
 ```bash
 curl https://d2p9nb0mef2kj5-8080.proxy.runpod.net/v1/chat/completions \
     -H "Content-Type: application/json" \
+    -H "Authorization: Bearer 07bbc8c925648141d45ad9c363febf6cedc059744b5831e1" \
     -d '{
         "model": "glm-5",
         "messages": [{"role": "user", "content": "Hello!"}],
@@ -186,7 +192,7 @@ from openai import OpenAI
 
 client = OpenAI(
     base_url="https://d2p9nb0mef2kj5-8080.proxy.runpod.net/v1",
-    api_key="not-needed",
+    api_key="07bbc8c925648141d45ad9c363febf6cedc059744b5831e1",
 )
 response = client.chat.completions.create(
     model="glm-5",
@@ -200,6 +206,55 @@ print(response.choices[0].message.content)
 ```bash
 ssh -L 8080:localhost:8080 root@157.254.50.91 -p 11249
 # Then connect via http://localhost:8080
+```
+
+## Open WebUI (Chat Interface)
+
+[Open WebUI](https://github.com/open-webui/open-webui) provides a ChatGPT-like web interface that connects to the llama.cpp server. Run it on your local desktop via Docker.
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) installed and running on your local machine
+
+### Quick start
+
+```bash
+chmod +x client.sh && ./client.sh
+```
+
+Then open http://localhost:3000 in your browser. On first visit, create an admin account (first signup becomes admin), then select the GLM-5 model from the dropdown.
+
+### Manual Docker run
+
+```bash
+docker run -d \
+    --name open-webui \
+    --restart unless-stopped \
+    -p 3000:8080 \
+    -v open-webui-data:/app/backend/data \
+    -e OPENAI_API_BASE_URL="https://d2p9nb0mef2kj5-8080.proxy.runpod.net/v1" \
+    -e OPENAI_API_KEY="07bbc8c925648141d45ad9c363febf6cedc059744b5831e1" \
+    -e OLLAMA_BASE_URL="" \
+    -e ENABLE_OLLAMA_API=false \
+    ghcr.io/open-webui/open-webui:main
+```
+
+### Environment variables
+
+| Variable | Value | Purpose |
+|----------|-------|---------|
+| `OPENAI_API_BASE_URL` | `https://d2p9nb0mef2kj5-8080.proxy.runpod.net/v1` | Points to the llama.cpp server |
+| `OPENAI_API_KEY` | `07bbc8c925648141d45ad9c363febf6cedc059744b5831e1` | API key for authentication |
+| `ENABLE_OLLAMA_API` | `false` | Disable Ollama (not used) |
+
+### Management
+
+```bash
+docker stop open-webui       # stop
+docker start open-webui      # start
+docker logs -f open-webui    # view logs
+docker rm -f open-webui      # remove container
+docker volume rm open-webui-data  # remove all data
 ```
 
 ## Troubleshooting
@@ -224,7 +279,8 @@ This script handles all 7 steps automatically: system packages, NVIDIA/CUDA driv
 
 ```
 /workspace/
-  install.sh                  # automated setup script (run on fresh server)
+  install.sh                  # server setup script (run on fresh GPU server)
+  client.sh                   # Open WebUI launcher (run on local desktop)
   README.md                   # this file
   llama-server.log            # server stdout/stderr (created at runtime)
   llama-server.pid            # server PID file (created at runtime)
@@ -233,3 +289,4 @@ This script handles all 7 steps automatically: system packages, NVIDIA/CUDA driv
   models/
     GLM-5-Q4_K_M/
       Q4_K_M/                 # 11 split GGUF files (~426 GB total)
+```
