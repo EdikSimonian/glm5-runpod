@@ -20,6 +20,7 @@ SERVER_HOST="0.0.0.0"
 SERVER_PORT="8080"
 CTX_SIZE="8192"
 
+API_KEY=""
 HF_TOKEN=""
 CLAUDE_ACCESS_TOKEN=""
 CLAUDE_REFRESH_TOKEN=""
@@ -287,6 +288,7 @@ nohup "${LLAMA_CPP_DIR}/build/bin/llama-server" \
     --flash-attn on \
     --split-mode layer \
     --tensor-split "${TENSOR_SPLIT}" \
+    --api-key "${API_KEY}" \
     > "${WORKSPACE}/llama-server.log" 2>&1 &
 
 SERVER_PID=$!
@@ -331,6 +333,7 @@ echo -e "${GREEN}===============================================================
 echo ""
 echo "  Model:        GLM-5 Q4_K_M (744B MoE, 4-bit)"
 echo "  Internal:     http://${INTERNAL_IP}:${SERVER_PORT}"
+echo "  API key:      ${API_KEY}"
 echo "  PID file:     ${WORKSPACE}/llama-server.pid"
 echo "  Log file:     ${WORKSPACE}/llama-server.log"
 echo ""
@@ -340,17 +343,18 @@ if [[ -n "${RUNPOD_POD_ID:-}" ]]; then
     PROXY_URL="https://${RUNPOD_POD_ID}-${SERVER_PORT}.proxy.runpod.net"
     echo "  RunPod proxy: ${PROXY_URL}"
     echo ""
-    echo "  Health check:"
+    echo "  Health check (no auth needed):"
     echo "    curl ${PROXY_URL}/health"
     echo ""
-    echo "  Chat completion:"
+    echo "  Chat completion (requires API key):"
     echo "    curl ${PROXY_URL}/v1/chat/completions \\"
     echo "      -H 'Content-Type: application/json' \\"
+    echo "      -H 'Authorization: Bearer ${API_KEY}' \\"
     echo "      -d '{\"model\":\"glm-5\",\"messages\":[{\"role\":\"user\",\"content\":\"Hello!\"}],\"max_tokens\":1024}'"
     echo ""
     echo "  Python (OpenAI client):"
     echo "    from openai import OpenAI"
-    echo "    client = OpenAI(base_url=\"${PROXY_URL}/v1\", api_key=\"not-needed\")"
+    echo "    client = OpenAI(base_url=\"${PROXY_URL}/v1\", api_key=\"${API_KEY}\")"
     echo ""
     if [[ -n "${RUNPOD_PUBLIC_IP:-}" && -n "${RUNPOD_TCP_PORT_22:-}" ]]; then
         echo "  SSH tunnel (alternative):"
@@ -360,12 +364,13 @@ if [[ -n "${RUNPOD_POD_ID:-}" ]]; then
     fi
 else
     PUBLIC_IP="${RUNPOD_PUBLIC_IP:-${INTERNAL_IP}}"
-    echo "  Health check:"
+    echo "  Health check (no auth needed):"
     echo "    curl http://${PUBLIC_IP}:${SERVER_PORT}/health"
     echo ""
-    echo "  Chat completion:"
+    echo "  Chat completion (requires API key):"
     echo "    curl http://${PUBLIC_IP}:${SERVER_PORT}/v1/chat/completions \\"
     echo "      -H 'Content-Type: application/json' \\"
+    echo "      -H 'Authorization: Bearer ${API_KEY}' \\"
     echo "      -d '{\"model\":\"glm-5\",\"messages\":[{\"role\":\"user\",\"content\":\"Hello!\"}],\"max_tokens\":1024}'"
     echo ""
 fi
